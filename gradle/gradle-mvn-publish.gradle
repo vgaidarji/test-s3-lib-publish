@@ -1,0 +1,84 @@
+apply plugin: 'maven'
+apply plugin: 'signing'
+
+version = VERSION_NAME
+group = GROUP
+
+buildscript {
+    repositories {
+        mavenCentral()
+    }
+}
+
+configurations {
+    mavenWagon
+}
+
+dependencies {
+    mavenWagon "org.springframework.build:aws-maven:5.0.0.RELEASE"
+}
+
+def isReleaseBuild() {
+    return VERSION_NAME.contains("SNAPSHOT") == false
+}
+
+def getRepositoryUsername() {
+    println "Reading Maven repository username from gradle.properties"
+    if (hasProperty('mavenRepositoryUsername')) {
+        return mavenRepositoryUsername
+    }
+    throw new InvalidUserDataException("mavenRepositoryUsername is not defined, check your user ~/.gradle/gradle.properties file");
+}
+
+def getRepositoryPassword() {
+    println "Reading Maven repository password from gradle.properties"
+    if (hasProperty('mavenRepositoryPassword')) {
+        return mavenRepositoryPassword
+    }
+    throw new InvalidUserDataException("mavenRepositoryPassword is not defined, check your user ~/.gradle/gradle.properties file");
+}
+
+uploadArchives {
+    repositories {
+        mavenDeployer {
+            configuration = configurations.mavenWagon
+            beforeDeployment { MavenDeployment deployment -> signing.signPom(deployment) }
+
+            pom.groupId = GROUP
+            pom.artifactId = POM_ARTIFACT_ID
+            pom.version = VERSION_NAME
+
+            repository(url: RELEASE_REPOSITORY_URL) {
+                authentication(userName: getRepositoryUsername(), password: getRepositoryPassword())
+            }
+            snapshotRepository(url: SNAPSHOT_REPOSITORY_URL) {
+                authentication(userName: getRepositoryUsername(), password: getRepositoryPassword())
+            }
+
+            pom.project {
+                name POM_NAME
+                packaging POM_PACKAGING
+                description POM_DESCRIPTION
+            }
+        }
+    }
+
+    install {
+        repositories.mavenInstaller {
+            pom.groupId = GROUP
+            pom.artifactId = POM_ARTIFACT_ID
+            pom.version = VERSION_NAME
+
+            pom.project {
+                name POM_NAME
+                packaging POM_PACKAGING
+                description POM_DESCRIPTION
+            }
+        }
+    }
+
+    signing {
+        required { isReleaseBuild() && gradle.taskGraph.hasTask("uploadArchives") }
+        sign configurations.archives
+    }
+}
